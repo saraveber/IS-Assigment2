@@ -14,12 +14,13 @@ test = read_tsv("test_data.tsv", col_names = TRUE)
 
 train_data_frame = data.frame(train["label"],train["text_a"])
 names(train_data_frame) <-c("labels","text")
-#train_data_frame = train_data_frame[1:10,]
+
+#train_data_frame = train_data_frame[1:100,]
 
 
 test_data_frame = data.frame(test["label"],test["text_a"])
 names(test_data_frame) <-c("labels","text")
-#test_data_frame = test_data_frame[1:10,]
+#test_data_frame = test_data_frame[1:100,]
 
 
 preprocess_text <- function(input_text){
@@ -133,7 +134,7 @@ num_less_ten <- num_less_ten/max(num_less_ten)
 num_less_ten 
 
 #lets bind together features
-tdm2 <- t(as.matrix(removeSparseTerms(tdm, sparse=0.999))) #ce zelis bolj ppogoste povecaj to stevilko ali naredi tako da vzame samo najpogostejse
+tdm2 <- t(as.matrix(removeSparseTerms(tdm, sparse=0.99))) #ce zelis bolj ppogoste povecaj to stevilko ali naredi tako da vzame samo najpogostejse
 final <- (cbind(tdm2,text_length,num_of_nonasci,num_less_ten))
 colnames(final)[(ncol(final) - 2):ncol(final)]<- c("length", "num_nonasci", "num_less_ten")
 colnames(final)
@@ -155,7 +156,98 @@ train_data <- data.frame(train_data)
 feature_vals <- attrEval(LABELS ~ ., train_data, "MDL")
 feature_vals
 
+num_features <- 100
+threshold <- sort(feature_vals, decreasing=TRUE)[num_features]
+selected_features <- c(feature_vals >= threshold, FALSE)
+selected_features <- as.matrix(as.matrix(selected_features)[0:(NROW(selected_features)-1)])
 
+X_train <- as.matrix(train_features[, selected_features])
+y_train <- as.factor(train_data_frame$labels)
+
+X_test <- as.matrix(test_features[, selected_features])
+y_test <- as.factor(test_data_frame$labels)
+
+head(X_train)
+head(X_test)
+
+head(y_train)
+head(y_test)
+count (y_test)
+count(y_train)
+
+##-------------------------------------------------------------------------
+##-------------------------------------------------------------------------
+#metode
+
+
+
+# classification accuracy
+CA <- function(observed, predicted){
+  t <- table(observed, predicted)
+  return(sum(diag(t))/sum(t))
+}
+
+F1 <- function(observed, predicted) {
+  predicted <- factor(as.character(predicted), levels=sort(unique(as.character(observed))))
+  cm = as.matrix(table(observed, predicted))
+  print(cm)
+  precision <- cm[2,2] /(cm[1,2]+cm[2,2])
+  recall <- cm[2,2] /(cm[2,1]+cm[2,2])
+  f1 <-  ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
+  return(f1)
+}
+
+
+# majority classifier
+
+predicted <- rep(1,nrow(X_test))
+observed <- y_test
+CA(observed, predicted)
+###KAJ DA FAK JE NAROBE S TEMLE
+F1(observed,predicted)
+
+
+
+# k-NN classifier
+
+library(class)
+
+predicted <- knn(X_train, X_test, y_train)
+observed <- y_test
+CA(observed, predicted)
+F1(observed,predicted)
+#recall(observed, predicted)
+#precision(observed, predicted)
+
+# SVM with a radial basis kernel
+library(kernlab)
+
+
+model.svm <- ksvm(X_train, y_train, kernel="rbfdot", scaled=FALSE)
+predicted <- predict(model.svm, X_test, type="response")
+observed <- y_test
+CA(observed, predicted)
+F1(observed, predicted)
+#recall(observed, predicted)
+#precision(observed, predicted)
+
+
+# random forest
+
+library(randomForest)
+
+rf <- randomForest(X_train, y_train)
+predicted <- predict(rf, X_test, type="response")
+observed <- y_test
+CA(observed, predicted)
+F1(observed,predicted)
+#recall(observed, predicted)
+#precision(observed, predicted)
+
+
+
+
+#OD TUKI NAPREJ NI VEC JE KR NEKAJ
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 train_corpus <- preprocess_text(train_data_frame$text)
@@ -254,6 +346,30 @@ colnames(test_data)[(ncol(test_data) - num_of_new_features):ncol(test_data)] <- 
 
 
 feature_vals <- attrEval(labels ~ ., train_data, "MDL")
+
+
+
+# recall is the fraction of relevant instances that are retrieved (per class)
+recall <- function(observed, predicted){
+  t <- table(observed, predicted)
+  r <- c(0, 0, 0, 0, 0)
+  for(i in 1:5){
+    r[i] <- t[i, i]/sum(t[i,])
+  }
+  names(r) <- c("1", "2", "3", "4", "5")
+  return(r)
+}
+
+# precision is the fraction of retrieved instances that are relevant (per class)
+precision <- function(observed, predicted){
+  t <- table(observed, predicted)
+  p <- c(0, 0, 0, 0, 0)
+  for(i in 1:5){
+    p[i] <- t[i, i]/sum(t[, i])
+  }
+  names(p) <- c("1", "2", "3", "4", "5")
+  return(p)
+}
 
 
 

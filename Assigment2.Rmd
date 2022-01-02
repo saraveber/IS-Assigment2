@@ -1,3 +1,11 @@
+---
+title: "Assigment2"
+author: "Primož Miheljak, Sara Veber"
+date: "12/30/2021"
+output: pdf_document
+---
+
+```{r,echo = FALSE, include = FALSE}
 library(readr)
 library(data.table)
 library(epiDisplay)
@@ -6,7 +14,19 @@ library(tm)
 library(ggplot2)
 library(wordcloud)
 library(CORElearn)
+library(class)
+library(kernlab)
+library(randomForest)
+library(cowplot)
+```
 
+## Task 1 – Text preprocesing
+For the first task, prepare a suitable dataset that can be used for clustering and classification.
+
+
+__1. Convert the file into a data frame.__
+
+```{r message=FALSE, warning=FALSE}
 train = read_tsv("train_data.tsv", col_names = TRUE)
 test = read_tsv("test_data.tsv", col_names = TRUE)
 
@@ -14,12 +34,13 @@ train_data_frame = data.frame(train["label"],train["text_a"])
 names(train_data_frame) <-c("labels","text")
 #train_data_frame = train_data_frame[1:100,]
 
-
 test_data_frame = data.frame(test["label"],test["text_a"])
 names(test_data_frame) <-c("labels","text")
 #test_data_frame = test_data_frame[1:100,]
+```
+__2. Preprocess the text.__
 
-
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 preprocess_text <- function(input_text){
     
     corpus <- Corpus(VectorSource(input_text))
@@ -55,76 +76,68 @@ preprocess_text <- function(input_text){
     corpus <- tm_map(corpus, removeWords, stopwords('english'))
     corpus <- tm_map(corpus, stemDocument)
     corpus <- tm_map(corpus, stripWhitespace)
-    
-  
 }
-
 all_text_data <- data.frame(rbind(as.matrix(train_data_frame$text), as.matrix(test_data_frame$text)))
 names(all_text_data) <- c("text")
 corpus <- preprocess_text(all_text_data$text)
 tdm <- TermDocumentMatrix(corpus)
+```
 
-minDocFreq <- 10
-maxDocFreq <- 300
-tdm<- DocumentTermMatrix(corpus, control = list(bounds = list(global = c(minDocFreq, maxDocFreq))))
-tdm <- as.matrix(tdm)
-final <- (cbind(tdm2,new_features))
-colnames(final)
+__3. Visualize the data.__
 
-#visualizations to make sense of data
-#frequency of all words
+```{r echo=TRUE,eval = TRUE, message=FALSE, warning=FALSE}
 allRowNames <- rownames(tdm)
 termFrequency <- rowSums(as.matrix(tdm))
-termFrequency <- data.frame(sort(subset(termFrequency, termFrequency >= 100)))
+termFrequency <- data.frame(sort(subset(termFrequency, termFrequency >= 500)))
 termFrequency <-cbind(termFrequency, rownames(termFrequency))
 colnames(termFrequency) <- c("val","words")
-p <- ggplot(data=termFrequency, aes(x=reorder(words,-val), y=val)) +  geom_bar(stat="identity", color="black", fill="white")+ggtitle("Most frequent words")+xlab("words")+ylab("frequency") # for the main title
+p <-  ggplot(data=termFrequency, aes(x=reorder(words,-val), y=val)) +  
+      geom_bar(stat="identity", color="black", fill="white") +
+      ggtitle("Most frequent words") + xlab("words") + ylab("frequency")
 p + coord_flip()
+```
 
+```{r, figures-side, fig.show="hold", out.width="50%"}
+par(mar = c(4, 4, .1, .1))
 
-#word cloud (words from real news)
 idx = which(train_data_frame$labels == 1)
 tdm_real = tdm[,idx]
 mat <- as.matrix(tdm_real)
 wordFreq <- sort(rowSums(mat), decreasing=TRUE)
 grayLevels <- gray((wordFreq+10) / (max(wordFreq)+10))
 wordcloud(words=names(wordFreq), freq=wordFreq, min.freq=100, random.order=F, colors=grayLevels)
-#word cloud (words from fake news)
+mtext("Real news", side = 3, line = -21, outer = TRUE)
+
 idx = which(train_data_frame$labels == 0)
 tdm_fake = tdm[,idx]
 mat <- as.matrix(tdm_fake)
 wordFreq <- sort(rowSums(mat), decreasing=TRUE)
 grayLevels <- gray((wordFreq+10) / (max(wordFreq)+10))
 wordcloud(words=names(wordFreq), freq=wordFreq, min.freq=100, random.order=F, colors=grayLevels)
-
-#dataset je uravnovesen
-count(train_data_frame$labels)
-
-## opazanja:
-#najvecje so covid zadevscine
-#fake news ima manj besed pogostejsih kot 100 kot real news - mogoc k so typoti
-#dodaj feature -> stevilo besed ki se pojavijo samo 1* typo
-#dodaj feature -> dolzina besedila
-#dodaj feature ->
-#razmisli kako bi bilo fino prefiltrirati besede - > nemorejo biti vse
-#opcije:
-# ---> lahko je brez pogostih
-# ---> lahko je brez redkih 
-# ---> lahko bi pogledali slovar viskoko letecih covid besed in nek intersection 
-# za zdj bom delal brez redkih
+mtext("Fake news", side = 3, line = -21, outer = TRUE)
+```
 
 
-#dodajmo feature length
+
+We observed that eventhough dataset is quite balanced, fake news has fewer words that have frequency higher than 100. We also noticed that as expected most common words are the ones retated to SARS-CoV-2 virus. 
+
+## Task 2 – Feature construction##
+After preparing a suitable dataset, we extracted different features we thought could be useful for classification.
+
+__1. We added text length as an additional feature. __
+
+```{r}
 text_length <- nchar(as.character(all_text_data$text))
 text_length[is.na(text_length)] <- 0
 text_length <- text_length / max(text_length)
 text_length <- as.matrix(text_length)
 new_features <- text_length
 colnames(new_features)[ncol(new_features)] <- "text_length"
+```
 
+__2. We added number of non-asci symbols as an additional feature. __
 
-
-#dodaj feature stevilo ne asci simbolov
+```{r}
 only_asci <- data.frame(matrix(NA, NROW(all_text_data),NCOL(all_text_data)))
 names(only_asci) <- "text"
 
@@ -137,10 +150,11 @@ num_of_nonasci <- as.matrix(num_of_nonasci)
 new_features <- cbind(new_features,num_of_nonasci)
 colnames(new_features)[ncol(new_features)] <- "num_od_nonasci"
 colnames(new_features)
+```
 
-#cbind(num_of_nonasci,train_data_frame$labels) #samo da malo pogledam povezavo
+__3. We added number of words that have frequency in specific interval as an additional features. __
 
-#stevilo besed ki se ponovijo samo enkrat (10krat)
+```{r}
 intervals <- c(0,1,3,5,30,100,300,Inf)
 for (i in 1:(length(intervals)-1)){
   termFrequency <- rowSums(as.matrix(tdm))
@@ -152,21 +166,20 @@ for (i in 1:(length(intervals)-1)){
   new_features <- cbind(new_features,tren)
   colnames(new_features)[ncol(new_features)] <- as.character(intervals[i])
 }
-colnames(new_features)
+```
 
+__4. We only used terms that are not too sparse or too common. __
+
+```{r}
 minDocFreq <- 10
 maxDocFreq <- 800
-dtm <- DocumentTermMatrix(corpus, control = list(weighting=weightTfIdf,bounds = list(global = c(minDocFreq, maxDocFreq))))
-dtm2 <- as.matrix(dtm)
-final <- (cbind(dtm2,new_features))
-#tdm<- DocumentTermMatrix(corpus, control = list(bounds = list(global = c(minDocFreq, maxDocFreq))))
-#tdm2 <- as.matrix(tdm)
-#final <- (cbind(tdm2,new_features))
-colnames(final)
-final
+tdm<- DocumentTermMatrix(corpus, control = list(bounds = list(global = c(minDocFreq, maxDocFreq))))
+tdm2 <- as.matrix(tdm)
+final <- (cbind(tdm2,new_features))
+```
+__5. Splitting data into initial train and test set.__ 
 
-
-#split and add labels to train
+```{r}
 len_train = nrow(train_data_frame)
 len_test = nrow(test_data_frame)
 len_all = nrow(final)
@@ -176,47 +189,34 @@ test_features = final[(len_train+1):len_all,]
 
 train_data <- cbind(train_features,train_data_frame$labels) 
 colnames(train_data)[ncol(train_data)] <- "LABELS"
-colnames(train_data)
 train_data <- data.frame(train_data)
-
-#evaluate features
+```
+__6. Feature selection on train data set (minimum description length).__
+```{r}
 feature_vals <- attrEval(LABELS ~ ., train_data, "MDL")
-feature_vals
 
 num_features <- 100
 threshold <- sort(feature_vals, decreasing=TRUE)[num_features]
 selected_features <- c(feature_vals >= threshold, FALSE)
 selected_features <- as.matrix(as.matrix(selected_features)[0:(NROW(selected_features)-1)])
 
-colnames(selected_features)
-
 X_train <- as.matrix(train_features[, selected_features])
 y_train <- as.factor(train_data_frame$labels)
 
 X_test <- as.matrix(test_features[, selected_features])
 y_test <- as.factor(test_data_frame$labels)
-
 colnames(X_train)
-head(X_train)
-head(X_test)
+```
+Selected feature set is not surprising. 
+We have expected that among the selected features will be: text_length, num_of_nonasci, and interval features we added before. Other selected features represent words that are important in news. 
 
-head(y_train)
-head(y_test)
-count (y_test)
-count(y_train)
-
-##-------------------------------------------------------------------------
-##-------------------------------------------------------------------------
-#metode
-
-
-
-# classification accuracy
+## Task 3 – Modeling##
+__1. We implemented classification accuracy and F1-score.__
+```{r}
 CA <- function(observed, predicted){
   t <- table(observed, predicted)
   return(sum(diag(t))/sum(t))
 }
-
 F1 <- function(observed, predicted) {
   predicted <- factor(as.character(predicted), levels=sort(unique(as.character(observed))))
   cm = as.matrix(table(observed, predicted))
@@ -225,89 +225,99 @@ F1 <- function(observed, predicted) {
   f1 <-  ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
   return(f1)
 }
+```
 
-
-# majority classifier
-
-predicted <- rep(1,nrow(X_test))
-observed <- y_test
-CA(observed, predicted)
-###KAJ DA FAK JE NAROBE S TEMLE
-F1(observed,predicted)
-
-#
-# NAIVE BAYES CLASSIFIER
-
+__2. Naive Bayes classifier.__
+```{r}
 X_train = data.frame(X_train)
 X_test = data.frame(X_test)
-
-library(CORElearn)
 cm.nb <- CoreModel(y_train ~ ., data = X_train, model="bayes")
 predicted <- predict(cm.nb, X_test, type="class")
 observed <- y_test
 CA_ = CA(observed, predicted)
 F1_ = F1(observed,predicted)
-
-
-NAMES = c("Naive Bayas classifier")
+```
+```{r,echo=FALSE}
+NAMES = c("Naive Bayes classifier")
 f1_scores = c(F1_)
 ca_scores = c(CA_)
-# k-NN classifier
+```
 
-library(class)
+
+__3. K-NN classifier.__
+```{r}
 X_train = as.matrix(X_train)
 X_test = as.matrix(X_test)
 predicted <- knn(X_train, X_test, y_train)
 observed <- y_test
 CA_ = CA(observed, predicted)
 F1_ = F1(observed,predicted)
-#recall(observed, predicted)
-#precision(observed, predicted)
+```
+```{r,echo=FALSE}
 NAMES = c(NAMES,"k-NN classifier")
 f1_scores = c(f1_scores,F1_)
 ca_scores = c(ca_scores,CA_)
-f1_scores
+```
 
-# SVM with a radial basis kernel
-library(kernlab)
-
-
+__4. SVM with a radial basis kernel.__
+```{r}
 model.svm <- ksvm(X_train, y_train, kernel="anovadot", scaled=TRUE)
 predicted <- predict(model.svm, X_test, type="response")
 observed <- y_test
 CA_ = CA(observed, predicted)
-F1_ = F1(observed, predicted)
-#recall(observed, predicted)
-#precision(observed, predicted)
+FA_ = F1(observed, predicted)
+```
+```{r,echo=FALSE}
 NAMES = c(NAMES,"SVM classifier")
 f1_scores = c(f1_scores,F1_)
 ca_scores = c(ca_scores,CA_)
-f1_scores
-F1_
-CA_
-# random forest
-
-library(randomForest)
-
+```
+__5.  Random forest.__
+```{r}
 rf <- randomForest(X_train, y_train)
 predicted <- predict(rf, X_test, type="response")
 observed <- y_test
 CA_ = CA(observed, predicted)
-F1_ =F1(observed,predicted)
-#recall(observed, predicted)
-#precision(observed, predicted)
+F1_ = F1(observed,predicted)
+```
+
+```{r,echo=FALSE}
 NAMES = c(NAMES,"Random forest")
 f1_scores = c(f1_scores,F1_)
 ca_scores = c(ca_scores,CA_)
+```
+
+## Task 3 – Evaluation##
+```{r}
 ca_scores = round(ca_scores,digits = 2)
+f1_scores = round(f1_scores,digits = 2)
 df = data.frame(ca_scores,f1_scores, NAMES)
-df
-p<-ggplot(data=df, aes(x=NAMES, y=ca_scores,label = sprintf("%0.2f", round(ca_scores, digits = 2)))) +
+
+p1<-ggplot(data=df, aes(x=NAMES, y=ca_scores,label = sprintf("%0.2f", round(ca_scores, digits = 2)))) +
   geom_bar(stat="identity", fill="black")+
   geom_text(aes(label=ca_scores), vjust=1.6, color="white", size=3.5)+
-  theme_minimal()+xlab(" ")+ ylab("CA")
-p
-ca_scores
-f1_scores
-NAMES
+  theme_minimal()+xlab(" ")+ ylab("CA")+
+  coord_flip()
+
+
+p2<-ggplot(data=df, aes(x=NAMES, y=f1_scores,label = sprintf("%0.2f", round(f1_scores, digits = 2)))) +
+  geom_bar(stat="identity", fill="black")+
+  geom_text(aes(label=f1_scores), vjust=1.6, color="white", size=3.5)+
+  theme_minimal()+xlab(" ")+ ylab("F1")+
+  coord_flip()
+
+plot_grid(p1, p2)
+
+```
+Used methods perform according to expectations. The worst performing is K-NN model because the feature space is high-dimensional and data points are sparse in it. A bit better is simple Naive Bayes classifier although its performance is still relatively poor. Significantly better are SVM and random forest since they have bigger expressive power and can model more complex feature relationships. Our best model is random forest and it is ranked between doc2vec+LR and word+LR. Yes, we tried different hyperparameter settings. It crucially influenced the results, for example, combining SVM with ANOVA RBF kernel boosted performance for enormous 5%.
+
+```{r}
+library(knitr)
+Accuracy = c(0.957,0.939,0.929,0.912,0.812,0.523,0.879)
+F1 = c(0.956,0.939,0.929,0.911,0.812,0.344,0.886)
+Baseline = c("autoML (1h)","MPNet + LR","char + LR","word + LR","doc2vec + LR","majority","our approch")
+df = data.frame(Baseline,Accuracy,F1)
+kable(df)
+```
+
 

@@ -295,14 +295,14 @@ df = data.frame(ca_scores,f1_scores, NAMES)
 
 p1<-ggplot(data=df, aes(x=NAMES, y=ca_scores,label = sprintf("%0.2f", round(ca_scores, digits = 2)))) +
   geom_bar(stat="identity", fill="black")+
-  geom_text(aes(label=ca_scores), vjust=1.6, color="white", size=3.5)+
+  geom_text(aes(label=ca_scores), hjust=2, color="white", size=3.5)+
   theme_minimal()+xlab(" ")+ ylab("CA")+
   coord_flip()
 
 
 p2<-ggplot(data=df, aes(x=NAMES, y=f1_scores,label = sprintf("%0.2f", round(f1_scores, digits = 2)))) +
   geom_bar(stat="identity", fill="black")+
-  geom_text(aes(label=f1_scores), vjust=1.6, color="white", size=3.5)+
+  geom_text(aes(label=f1_scores), hjust=2, color="white", size=3.5)+
   theme_minimal()+xlab(" ")+ ylab("F1")+
   coord_flip()
 

@@ -300,6 +300,7 @@ NAMES = c(NAMES,"Random forest")
 f1_scores = c(f1_scores,F1_)
 ca_scores = c(ca_scores,CA_)
 ca_scores = round(ca_scores,digits = 2)
+f1_scores = round(f1_scores,digits = 2)
 df = data.frame(ca_scores,f1_scores, NAMES)
 df
 p<-ggplot(data=df, aes(x=NAMES, y=ca_scores,label = sprintf("%0.2f", round(ca_scores, digits = 2)))) +
@@ -310,4 +311,18 @@ p
 ca_scores
 f1_scores
 NAMES
+
+p1<-ggplot(data=df, aes(x=NAMES, y=ca_scores,label = sprintf("%0.2f", round(ca_scores, digits = 2)))) +
+  geom_bar(stat="identity", fill="black")+
+  geom_text(aes(label=ca_scores), vjust=1.6, color="white", size=3.5)+
+  theme_minimal()+xlab(" ")+ ylab("CA")
+
+
+p2<-ggplot(data=df, aes(x=NAMES, y=f1_scores,label = sprintf("%0.2f", round(f1_scores, digits = 2)))) +
+  geom_bar(stat="identity", fill="black")+
+  geom_text(aes(label=f1_scores), vjust=1.6, color="white", size=3.5)+
+  theme_minimal()+xlab(" ")+ ylab("F1")
+
+library(cowplot)
+plot_grid(p1, p2)
 
